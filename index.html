@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FitTrack Pro</title>
+
+  <!-- ✅ MOBILE FIX -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+
+    h1 {
+      text-align: center;
+      margin: 15px;
+      font-size: 22px;
+    }
+
+    .status {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      background: #3fb950;
+      border-radius: 50%;
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0.3; }
+    }
+
+    /* Buttons */
+    .btn-container {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      background: #238636;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      width: 150px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      padding: 15px;
+      max-width: 1000px;
+      margin: auto;
+    }
+
+    .card {
+      background: #161b22;
+      border-radius: 10px;
+      padding: 15px;
+      text-align: center;
+      border: 1px solid #30363d;
+    }
+
+    .label {
+      color: #8b949e;
+      font-size: 12px;
+    }
+
+    .value {
+      font-size: 20px;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
+    .circle {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      margin: auto;
+      background: conic-gradient(#3fb950 0deg, #30363d 0deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .circle-inner {
+      width: 65px;
+      height: 65px;
+      background: #0d1117;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Bottom */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      padding: 15px;
+    }
+
+    .panel {
+      background: #161b22;
+      border-radius: 10px;
+      padding: 10px;
+      border: 1px solid #30363d;
+    }
+
+    #map {
+      height: 220px;
+      border-radius: 8px;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 220px !important;
+      background: white;
+      border-radius: 8px;
+    }
+
+    /* 📱 MOBILE */
+    @media (max-width: 768px) {
+      .bottom-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .btn {
+        width: 90%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>⌚ FitTrack Pro</h1>
+
+<p class="status">
+  <span class="dot"></span>
+  Device Connected | Live Data Streaming
+</p>
+
+<div class="btn-container">
+  <button class="btn" onclick="start()">Start</button>
+  <button class="btn" onclick="stop()">Stop</button>
+  <button class="btn" onclick="downloadPDF()">Download Report</button>
+</div>
+
+<div class="container">
+
+  <div class="card">
+    <div class="label">❤️ Heart Rate</div>
+    <div class="circle" id="hrCircle">
+      <div class="circle-inner" id="hr">--</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">🫁 SpO₂</div>
+    <div class="circle" id="spo2Circle">
+      <div class="circle-inner" id="spo2">--</div>
+    </div>
+  </div>
+
+  <div class="card"><div class="label">👣 Steps</div><div class="value" id="steps">--</div></div>
+  <div class="card"><div class="label">🤖 Activity</div><div class="value" id="activity">--</div></div>
+  <div class="card"><div class="label">🔥 Calories</div><div class="value" id="cal">--</div></div>
+  <div class="card"><div class="label">📏 Distance</div><div class="value" id="dist">--</div></div>
+  <div class="card"><div class="label">⚡ Speed</div><div class="value" id="speed">--</div></div>
+
+</div>
+
+<div class="bottom-grid">
+
+  <div class="panel">
+    <h4>📈 Heart Rate</h4>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="panel">
+    <h4>📍 Location</h4>
+    <div id="map"></div>
+  </div>
+
+</div>
+
+<script>
+const { jsPDF } = window.jspdf;
+
+let hr=80,steps=0,spo2=98,calories=0,distance=0,speed=0;
+let running=false,interval,startTime;
+let lat=17.3850,lon=78.4867;
+
+let map=L.map('map').setView([lat,lon],15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+let marker=L.marker([lat,lon]).addTo(map);
+let path=L.polyline([],{color:'green'}).addTo(map);
+
+let chart=new Chart(document.getElementById('chart'),{
+ type:'line',
+ data:{labels:[],datasets:[{data:[],borderColor:'green'}]}
+});
+
+function updateCircle(id,value,max){
+ let deg=(value/max)*360;
+ document.getElementById(id).style.background=
+ `conic-gradient(#3fb950 ${deg}deg, #30363d ${deg}deg)`;
+}
+
+function simulate(){
+ hr+= (Math.random()-0.5)*2;
+ hr=Math.floor(Math.max(60,Math.min(140,hr)));
+ spo2=Math.floor(95+Math.random()*5);
+
+ let stepInc=Math.random()>0.6?2:1;
+ steps+=stepInc;
+
+ distance=steps*0.8/1000;
+ calories+=stepInc*0.04;
+
+ let time=(Date.now()-startTime)/3600000;
+ speed=(distance/time).toFixed(2);
+
+ lat+=0.0001; lon+=0.0001;
+ marker.setLatLng([lat,lon]);
+ path.addLatLng([lat,lon]);
+ map.setView([lat,lon]);
+
+ let activity= hr>120?"Workout 🔥":stepInc>1?"Running 🏃":"Walking 🚶";
+
+ document.getElementById("hr").innerText=hr;
+ document.getElementById("spo2").innerText=spo2;
+ document.getElementById("steps").innerText=steps;
+ document.getElementById("activity").innerText=activity;
+ document.getElementById("cal").innerText=calories.toFixed(2);
+ document.getElementById("dist").innerText=distance.toFixed(2);
+ document.getElementById("speed").innerText=speed;
+
+ updateCircle("hrCircle",hr,140);
+ updateCircle("spo2Circle",spo2,100);
+
+ chart.data.labels.push('');
+ chart.data.datasets[0].data.push(hr);
+ if(chart.data.labels.length>20){
+   chart.data.labels.shift();
+   chart.data.datasets[0].data.shift();
+ }
+ chart.update();
+}
+
+function start(){
+ if(!running){
+  running=true;
+  startTime=Date.now();
+  interval=setInterval(simulate,1000);
+ }
+}
+
+function stop(){
+ running=false;
+ clearInterval(interval);
+}
+
+function downloadPDF(){
+ const doc=new jsPDF();
+ doc.text("Fitness Report",20,20);
+ doc.text(`Heart Rate: ${hr}`,20,40);
+ doc.text(`Steps: ${steps}`,20,50);
+ doc.text(`Calories: ${calories}`,20,60);
+ doc.text(`Distance: ${distance}`,20,70);
+ doc.save("report.pdf");
+}
+</script>
+
+</body>
+</html>
